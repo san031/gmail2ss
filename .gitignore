@@ -1,0 +1,12 @@
+.venv
+.env
+credentials.json
+token.json
+sample-data/
+*.xlsx
+.venv/
+__pycache__/
+.claude/*
+learning/*
+CLAUDE.md
+logs/
