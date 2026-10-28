@@ -54,3 +54,7 @@ with st.expander("Recent agent activity (last 30 log lines)"):
 
 if st.button("Refresh"):
     st.rerun()
+
+
+st.download_button("Download jobs.xlsx", sheet.DEFAULT_PATH.read_bytes(),
+                   file_name="jobs.xlsx")
