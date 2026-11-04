@@ -1,0 +1,13 @@
+.venv
+.git
+.env
+credentials.json
+token.json
+sample-data
+*.xlsx
+logs
+__pycache__
+frontend
+learning
+.claude
+CLAUDE.md
