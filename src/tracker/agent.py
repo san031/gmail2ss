@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 from dotenv import load_dotenv
+from groq import RateLimitError
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -48,7 +49,23 @@ For each email:
 8. Resolve relative dates ("next Tuesday") using the email's Date header.
 When done, reply with one sentence summarising what you changed."""
 
-llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0).bind_tools(TOOLS)
+llm = ChatGroq(model="qwen/qwen3.8-27b", temperature=0).bind_tools(TOOLS)
+
+triage_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0, max_tokens=3)
+
+TRIAGE = """Answer with exactly one word: YES or NO.
+YES if the email is about a job the user applied for or is being considered for:
+application confirmation, interview invite, online test, recruiter message,
+rejection, or offer.
+NO for newsletters, job-alert digests, promotions, OTPs, workshops, finance, anything else."""
+
+
+def is_job_related(m: dict) -> bool:
+    reply = triage_llm.invoke([
+        SystemMessage(TRIAGE),
+        HumanMessage(format_email(m)[:1500]),
+    ]).content
+    return reply.strip().upper().startswith("YES")
 
 
 def call_model(state: MessagesState) -> dict:
@@ -95,7 +112,7 @@ def format_email(m: dict) -> str:
 # for automation
 def run_once(days: int = 7, limit: int = 20) -> None:
     agent = build_graph()
-    counts = {"skipped": 0, "done": 0, "failed": 0}
+    counts = {"skipped": 0, "not_job": 0, "done": 0, "failed": 0}
 
     for m in fetch_recent_emails(days=days, limit=limit):
         if not m["email_id"] or sheet.is_email_processed(m["email_id"]):
@@ -105,8 +122,15 @@ def run_once(days: int = 7, limit: int = 20) -> None:
         config = {"recursion_limit": 10,
                   "configurable": {"email_id": m["email_id"]}}
         try:
+            if not is_job_related(m):
+                counts["not_job"] += 1
+                log.info("not job: %s", m["subject"])
+                continue
             result = agent.invoke(
                 {"messages": [HumanMessage(format_email(m))]}, config)
+        except RateLimitError:
+            log.error("Groq daily limit hit, stopping this run")
+            break
         except Exception:
             counts["failed"] += 1
             log.exception("failed: %s", m["subject"])
